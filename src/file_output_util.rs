@@ -8,17 +8,20 @@ use anyhow::bail;
 use anyhow::Context;
 use anyhow::Result;
 
-pub enum Writer<'a> {
+pub enum Writer {
     Dir(PathBuf),
-    Jar(&'a Path, zip::ZipWriter<fs::File>),
-    Merged(&'a Path, fs::File),
-    Single(&'a Path, fs::File, bool),
+    Jar(PathBuf, zip::ZipWriter<fs::File>),
+    Merged(PathBuf, fs::File),
+    Single(PathBuf, fs::File, bool),
+    Stdout,
 }
-impl<'a> Writer<'a> {
-    pub fn new(p: &'a Path) -> Result<Self> {
+impl Writer {
+    pub fn new(p: &Path) -> Result<Self> {
         create_parent(p)?;
+        let path_buf = p.to_path_buf();
+
         if p.is_dir() {
-            return Ok(Self::Dir(p.into()));
+            return Ok(Self::Dir(path_buf));
         }
 
         let f = create_file(p)?;
@@ -26,9 +29,9 @@ impl<'a> Writer<'a> {
         let ext = p.extension().and_then(|s| s.to_str());
         Ok(if let Some(s) = ext {
             match s.to_ascii_lowercase().as_str() {
-                "jar" | "zip" => Self::Jar(p, zip::ZipWriter::new(f)),
-                "j" => Self::Merged(p, f),
-                "class" => Self::Single(p, f, false),
+                "jar" | "zip" => Self::Jar(path_buf, zip::ZipWriter::new(f)),
+                "j" => Self::Merged(path_buf, f),
+                "class" => Self::Single(path_buf, f, false),
                 _ => bail!(
                     "Unsupported output extension {} for {}, expected directory, .jar, .zip, .j, or .class",
                     s,
@@ -41,6 +44,10 @@ impl<'a> Writer<'a> {
                 p.display()
             )
         })
+    }
+
+    pub fn stdout() -> Result<Self> {
+        Ok(Self::Stdout)
     }
 
     pub fn write(&mut self, name: Option<&str>, data: &[u8]) -> Result<()> {
@@ -83,6 +90,10 @@ impl<'a> Writer<'a> {
                 }
                 write(p, f, data)?;
                 *used = true;
+            }
+            Stdout => {
+                use std::io::Write;
+                std::io::stdout().write_all(data)?;
             }
         }
         Ok(())

@@ -1,0 +1,567 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Krakatau Java Decompiler</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            padding: 20px;
+        }
+
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+            background: white;
+            border-radius: 15px;
+            box-shadow: 0 20px 40px rgba(0,0,0,0.1);
+            overflow: hidden;
+        }
+
+        .header {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 30px;
+            text-align: center;
+        }
+
+        .header h1 {
+            font-size: 2.5em;
+            margin-bottom: 10px;
+            font-weight: 300;
+        }
+
+        .header p {
+            font-size: 1.1em;
+            opacity: 0.9;
+        }
+
+        .upload-section {
+            padding: 40px;
+            background: #f8f9fa;
+            border-bottom: 1px solid #dee2e6;
+        }
+
+        .upload-area {
+            border: 3px dashed #667eea;
+            border-radius: 10px;
+            padding: 60px 40px;
+            text-align: center;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            background: white;
+        }
+
+        .upload-area:hover {
+            border-color: #764ba2;
+            background: #f8f6ff;
+        }
+
+        .upload-area.dragover {
+            border-color: #764ba2;
+            background: #f0ebff;
+            transform: scale(1.02);
+        }
+
+        .upload-icon {
+            font-size: 4em;
+            color: #667eea;
+            margin-bottom: 20px;
+        }
+
+        .upload-text {
+            font-size: 1.2em;
+            color: #495057;
+            margin-bottom: 10px;
+        }
+
+        .upload-hint {
+            color: #6c757d;
+            font-size: 0.9em;
+        }
+
+        #fileInput {
+            display: none;
+        }
+
+        .file-info {
+            margin-top: 20px;
+            padding: 15px;
+            background: #e7f3ff;
+            border-radius: 8px;
+            display: none;
+        }
+
+        .file-info.active {
+            display: block;
+        }
+
+        .options-section {
+            padding: 30px 40px;
+            background: white;
+            border-bottom: 1px solid #dee2e6;
+        }
+
+        .options-title {
+            font-size: 1.3em;
+            margin-bottom: 20px;
+            color: #495057;
+        }
+
+        .options-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+            gap: 20px;
+        }
+
+        .option-item {
+            display: flex;
+            align-items: center;
+            padding: 15px;
+            background: #f8f9fa;
+            border-radius: 8px;
+            border: 1px solid #dee2e6;
+        }
+
+        .option-item input[type="checkbox"] {
+            width: 20px;
+            height: 20px;
+            margin-right: 12px;
+            cursor: pointer;
+        }
+
+        .option-item label {
+            cursor: pointer;
+            color: #495057;
+            font-size: 1em;
+        }
+
+        .decompile-button {
+            display: block;
+            width: 100%;
+            max-width: 300px;
+            margin: 30px auto;
+            padding: 15px 30px;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            border: none;
+            border-radius: 8px;
+            font-size: 1.1em;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.3s ease;
+        }
+
+        .decompile-button:hover:not(:disabled) {
+            transform: translateY(-2px);
+            box-shadow: 0 10px 20px rgba(102, 126, 234, 0.3);
+        }
+
+        .decompile-button:disabled {
+            opacity: 0.6;
+            cursor: not-allowed;
+        }
+
+        .loading {
+            display: none;
+            text-align: center;
+            padding: 40px;
+        }
+
+        .loading.active {
+            display: block;
+        }
+
+        .spinner {
+            border: 4px solid #f3f3f3;
+            border-top: 4px solid #667eea;
+            border-radius: 50%;
+            width: 50px;
+            height: 50px;
+            animation: spin 1s linear infinite;
+            margin: 0 auto 20px;
+        }
+
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+
+        .result-section {
+            padding: 40px;
+            display: none;
+        }
+
+        .result-section.active {
+            display: block;
+        }
+
+        .result-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 20px;
+        }
+
+        .result-title {
+            font-size: 1.5em;
+            color: #495057;
+        }
+
+        .copy-button {
+            padding: 10px 20px;
+            background: #28a745;
+            color: white;
+            border: none;
+            border-radius: 6px;
+            cursor: pointer;
+            font-size: 0.9em;
+            transition: background 0.3s ease;
+        }
+
+        .copy-button:hover {
+            background: #218838;
+        }
+
+        .copy-button:active {
+            transform: translateY(1px);
+        }
+
+        .output-area {
+            background: #2d3748;
+            color: #e2e8f0;
+            border-radius: 8px;
+            padding: 20px;
+            font-family: 'Consolas', 'Monaco', 'Courier New', monospace;
+            font-size: 14px;
+            line-height: 1.6;
+            overflow-x: auto;
+            white-space: pre-wrap;
+            max-height: 600px;
+            overflow-y: auto;
+        }
+
+        .error-message {
+            background: #f8d7da;
+            color: #721c24;
+            padding: 20px;
+            border-radius: 8px;
+            border: 1px solid #f5c6cb;
+            margin: 20px 0;
+            display: none;
+        }
+
+        .error-message.active {
+            display: block;
+        }
+
+        .progress-bar {
+            width: 100%;
+            height: 6px;
+            background: #e9ecef;
+            border-radius: 3px;
+            overflow: hidden;
+            margin: 20px 0;
+            display: none;
+        }
+
+        .progress-bar.active {
+            display: block;
+        }
+
+        .progress-fill {
+            height: 100%;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            width: 0%;
+            transition: width 0.3s ease;
+        }
+
+        @media (max-width: 768px) {
+            .header h1 {
+                font-size: 2em;
+            }
+
+            .upload-section {
+                padding: 20px;
+            }
+
+            .upload-area {
+                padding: 40px 20px;
+            }
+
+            .options-section {
+                padding: 20px;
+            }
+
+            .result-section {
+                padding: 20px;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>🔮 Krakatau Java Decompiler</h1>
+            <p>Upload Java class files to decompile them into Java assembly code</p>
+        </div>
+
+        <div class="upload-section">
+            <div class="upload-area" id="uploadArea">
+                <div class="upload-icon">📁</div>
+                <div class="upload-text">Click to upload or drag and drop</div>
+                <div class="upload-hint">Supports .class files</div>
+                <input type="file" id="fileInput" accept=".class">
+            </div>
+            <div class="file-info" id="fileInfo">
+                <strong>Selected file:</strong> <span id="fileName"></span>
+                <strong>Size:</strong> <span id="fileSize"></span>
+            </div>
+        </div>
+
+        <div class="options-section">
+            <div class="options-title">Decompilation Options</div>
+            <div class="options-grid">
+                <div class="option-item">
+                    <input type="checkbox" id="roundtrip" name="roundtrip">
+                    <label for="roundtrip">Round-trip mode</label>
+                </div>
+                <div class="option-item">
+                    <input type="checkbox" id="noShortCodeAttr" name="noShortCodeAttr">
+                    <label for="noShortCodeAttr">No short code attributes</label>
+                </div>
+            </div>
+            <button class="decompile-button" id="decompileBtn" disabled>Decompile Class File</button>
+        </div>
+
+        <div class="loading" id="loading">
+            <div class="spinner"></div>
+            <div>Decompiling class file...</div>
+            <div class="progress-bar" id="progressBar">
+                <div class="progress-fill" id="progressFill"></div>
+            </div>
+        </div>
+
+        <div class="error-message" id="errorMessage"></div>
+
+        <div class="result-section" id="resultSection">
+            <div class="result-header">
+                <div class="result-title">Decompiled Output</div>
+                <button class="copy-button" id="copyBtn">📋 Copy to Clipboard</button>
+            </div>
+            <div class="output-area" id="outputArea"></div>
+        </div>
+    </div>
+
+    <!-- Krakatau WASM interface -->
+    <script src="krakatau.js"></script>
+    <script>
+        const uploadArea = document.getElementById('uploadArea');
+        const fileInput = document.getElementById('fileInput');
+        const fileInfo = document.getElementById('fileInfo');
+        const fileName = document.getElementById('fileName');
+        const fileSize = document.getElementById('fileSize');
+        const decompileBtn = document.getElementById('decompileBtn');
+        const loading = document.getElementById('loading');
+        const resultSection = document.getElementById('resultSection');
+        const outputArea = document.getElementById('outputArea');
+        const errorMessage = document.getElementById('errorMessage');
+        const progressBar = document.getElementById('progressBar');
+        const progressFill = document.getElementById('progressFill');
+        const copyBtn = document.getElementById('copyBtn');
+
+        let currentFile = null;
+        let krakatau = new KrakatauDecompiler();
+
+        // Initialize Krakatau when page loads
+        window.addEventListener('load', async () => {
+            try {
+                await krakatau.initialize();
+                console.log('Krakatau initialized successfully');
+            } catch (error) {
+                console.warn('Failed to initialize Krakatau WASM:', error.message);
+                // Show a warning but still allow the simulation to work
+            }
+        });
+
+        // Upload area events
+        uploadArea.addEventListener('click', () => fileInput.click());
+
+        uploadArea.addEventListener('dragover', (e) => {
+            e.preventDefault();
+            uploadArea.classList.add('dragover');
+        });
+
+        uploadArea.addEventListener('dragleave', () => {
+            uploadArea.classList.remove('dragover');
+        });
+
+        uploadArea.addEventListener('drop', (e) => {
+            e.preventDefault();
+            uploadArea.classList.remove('dragover');
+
+            const files = e.dataTransfer.files;
+            if (files.length > 0) {
+                handleFile(files[0]);
+            }
+        });
+
+        fileInput.addEventListener('change', (e) => {
+            if (e.target.files.length > 0) {
+                handleFile(e.target.files[0]);
+            }
+        });
+
+        function handleFile(file) {
+            if (!file.name.endsWith('.class')) {
+                showError('Please select a valid .class file');
+                return;
+            }
+
+            currentFile = file;
+            fileName.textContent = file.name;
+            fileSize.textContent = formatFileSize(file.size);
+            fileInfo.classList.add('active');
+            decompileBtn.disabled = false;
+            hideError();
+            hideResult();
+        }
+
+        function formatFileSize(bytes) {
+            if (bytes === 0) return '0 Bytes';
+            const k = 1024;
+            const sizes = ['Bytes', 'KB', 'MB', 'GB'];
+            const i = Math.floor(Math.log(bytes) / Math.log(k));
+            return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
+        }
+
+        decompileBtn.addEventListener('click', async () => {
+            if (!currentFile) return;
+
+            hideError();
+            hideResult();
+            showLoading();
+
+            try {
+                const arrayBuffer = await currentFile.arrayBuffer();
+                const classData = new Uint8Array(arrayBuffer);
+
+                // Simulate progress
+                simulateProgress();
+
+                // Load and run the WASM module
+                const output = await decompileClassFile(classData);
+
+                hideLoading();
+                showResult(output);
+
+            } catch (error) {
+                hideLoading();
+                showError('Error decompiling file: ' + error.message);
+            }
+        });
+
+        function simulateProgress() {
+            progressBar.classList.add('active');
+            let progress = 0;
+            const interval = setInterval(() => {
+                progress += Math.random() * 30;
+                if (progress > 90) {
+                    clearInterval(interval);
+                    progress = 90;
+                }
+                progressFill.style.width = progress + '%';
+            }, 200);
+        }
+
+        async function decompileClassFile(classData) {
+            try {
+                // Get options from checkboxes
+                const roundtrip = document.getElementById('roundtrip').checked;
+                const noShortCodeAttr = document.getElementById('noShortCodeAttr').checked;
+                const fileName = currentFile ? currentFile.name : 'unknown.class';
+
+                // Use the Krakatau decompiler
+                const output = await krakatau.decompile(classData, fileName, {
+                    roundtrip,
+                    noShortCodeAttr
+                });
+
+                return output;
+
+            } catch (error) {
+                throw new Error('Decompilation failed: ' + error.message);
+            }
+        }
+
+        function showLoading() {
+            loading.classList.add('active');
+            progressFill.style.width = '0%';
+            progressBar.classList.remove('active');
+        }
+
+        function hideLoading() {
+            loading.classList.remove('active');
+            progressBar.classList.remove('active');
+        }
+
+        function showResult(output) {
+            outputArea.textContent = output;
+            resultSection.classList.add('active');
+            progressFill.style.width = '100%';
+            setTimeout(() => {
+                progressBar.classList.remove('active');
+            }, 500);
+        }
+
+        function hideResult() {
+            resultSection.classList.remove('active');
+        }
+
+        function showError(message) {
+            errorMessage.textContent = message;
+            errorMessage.classList.add('active');
+        }
+
+        function hideError() {
+            errorMessage.classList.remove('active');
+        }
+
+        copyBtn.addEventListener('click', () => {
+            const text = outputArea.textContent;
+            navigator.clipboard.writeText(text).then(() => {
+                const originalText = copyBtn.textContent;
+                copyBtn.textContent = '✅ Copied!';
+                copyBtn.style.background = '#28a745';
+
+                setTimeout(() => {
+                    copyBtn.textContent = originalText;
+                    copyBtn.style.background = '';
+                }, 2000);
+            }).catch(() => {
+                // Fallback for older browsers
+                const textArea = document.createElement('textarea');
+                textArea.value = text;
+                document.body.appendChild(textArea);
+                textArea.select();
+                document.execCommand('copy');
+                document.body.removeChild(textArea);
+
+                copyBtn.textContent = '✅ Copied!';
+                setTimeout(() => {
+                    copyBtn.textContent = '📋 Copy to Clipboard';
+                }, 2000);
+            });
+        });
+    </script>
+</body>
+</html>

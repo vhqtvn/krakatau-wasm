@@ -20,9 +20,9 @@ use super::string;
 use super::tokenize::Token;
 use super::tokenize::TokenType;
 use super::writer::Writer;
-use crate::lib::assemble::span::Spanned;
-use crate::lib::mhtags;
-use crate::lib::util::BStr;
+use crate::krakatau_lib::assemble::span::Spanned;
+use crate::krakatau_lib::mhtags;
+use crate::krakatau_lib::util::BStr;
 
 /// Shorthand function to convert spanned const ref to non-spanned version
 pub fn ns<'a, T, U>(r: Or<T, Spanned<'a, U>>) -> Or<T, U> {
