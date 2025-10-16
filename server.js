@@ -18,7 +18,9 @@ class KrakatauServer {
         this.authPassword = process.env.AUTH_PASSWORD;
         this.authTokenHeader = process.env.AUTH_TOKEN_HEADER;
         this.authTokenValue = process.env.AUTH_TOKEN_VALUE;
+        // Heroku automatically sets PORT, use it if available
         this.port = process.env.PORT || 3000;
+        // For Heroku, bind to 0.0.0.0 to accept all connections
         this.host = process.env.HOST || '0.0.0.0';
 
         console.log(`Server configuration:`);

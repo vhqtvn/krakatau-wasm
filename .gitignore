@@ -43,3 +43,17 @@ build/
 
 *.wasm
 .claude
+
+# Node.js
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+.npm
+.env
+.env.test
+.env.local
+.env.production
+
+# Heroku
+.heroku/

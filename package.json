@@ -1,0 +1,29 @@
+{
+  "name": "krakatau-decompiler-server",
+  "version": "1.0.0",
+  "description": "HTTP server for Java class decompilation using Krakatau WASM",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js",
+    "dev": "node server.js",
+    "heroku-postbuild": "chmod +x build.sh && ./build.sh",
+    "test": "node server.js",
+    "build-wasm": "echo 'Build WASM locally with: cargo build --release --target wasm32-unknown-unknown'"
+  },
+  "engines": {
+    "node": ">=14.0.0"
+  },
+  "keywords": [
+    "java",
+    "decompiler",
+    "krakatau",
+    "wasm",
+    "bytecode"
+  ],
+  "author": "",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/Storyyeller/Krakatau.git"
+  }
+}
