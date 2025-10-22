@@ -247,7 +247,7 @@ impl<'a> PoolBuilder<'a> {
         let bs_name_span = self.pending.last().map(|(_, c)| c.span);
 
         let filler_const = RawConst::Utf8(b"");
-        let mut table = [Some(filler_const); 65535];
+        let mut table: Vec<Option<RawConst<'a>>> = vec![Some(filler_const); 65535];
         table[0] = None;
 
         while let Some((ind, c)) = self.pending.pop() {

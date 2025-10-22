@@ -6,32 +6,43 @@ const path = require('path');
 async function run() {
     const args = process.argv.slice(2);
 
-    if (args.length === 0) {
-        console.error('Usage: node run.js <classfile>');
+    if (args.length < 2) {
+        console.error('Usage:');
+        console.error('  node run.js asm <assembly_file.j>  # Assemble bytecode');
+        console.error('  node run.js dec <class_file.class> # Decompile bytecode');
         process.exit(1);
     }
 
-    const classFile = args[0];
+    const command = args[0];
+    const inputFile = args[1];
 
-    // Check if class file exists
-    if (!fs.existsSync(classFile)) {
-        console.error(`Error: Class file '${classFile}' not found`);
+    if (command !== 'asm' && command !== 'dec') {
+        console.error('Error: Invalid command. Use "asm" or "dec"');
         process.exit(1);
     }
 
-    // Path to the WASM file
-    const wasmPath = path.join(__dirname, 'krak2.wasm');
+    // Check if input file exists
+    if (!fs.existsSync(inputFile)) {
+        console.error(`Error: File '${inputFile}' not found`);
+        process.exit(1);
+    }
+
+    // Path to the WASM file - try multiple locations
+    let wasmPath = path.join(__dirname, 'krak2.wasm');
 
     if (!fs.existsSync(wasmPath)) {
-        console.error(`Error: WASM file not found at ${wasmPath}`);
-        console.error('Please build the project first with: cargo build --release --target wasm32-unknown-unknown');
+        // Try the target directory
+        wasmPath = path.join(__dirname, 'target', 'wasm32-unknown-unknown', 'release', 'krakatau2.wasm');
+    }
+
+    if (!fs.existsSync(wasmPath)) {
+        console.error(`Error: WASM file not found. Please build the project first with:`);
+        console.error('  cargo build --target wasm32-unknown-unknown --release');
+        console.error('Then copy the WASM file or update the path in run.js');
         process.exit(1);
     }
 
     try {
-        // Read class file
-        const classData = fs.readFileSync(classFile);
-
         // Read WASM file
         const wasmBuffer = fs.readFileSync(wasmPath);
 
@@ -60,16 +71,28 @@ async function run() {
             throw new Error('WASM module does not export memory');
         }
 
-        // Convert class data to base64
-        const base64Content = classData.toString('base64');
+        let request, functionName;
 
-        // Create JSON request
-        const request = {
-            file_path: path.basename(classFile),
-            base64_content: base64Content,
-            roundtrip: false,
-            no_short_code_attr: false
-        };
+        if (command === 'asm') {
+            // Assembly operation
+            const sourceCode = fs.readFileSync(inputFile, 'utf8');
+            request = {
+                file_path: path.basename(inputFile),
+                source_code: sourceCode
+            };
+            functionName = 'assemble_json';
+        } else {
+            // Disassembly operation
+            const classData = fs.readFileSync(inputFile);
+            const base64Content = classData.toString('base64');
+            request = {
+                file_path: path.basename(inputFile),
+                base64_content: base64Content,
+                roundtrip: false,
+                no_short_code_attr: false
+            };
+            functionName = 'decompile_json';
+        }
 
         const jsonString = JSON.stringify(request);
         const jsonBytes = new TextEncoder().encode(jsonString);
@@ -90,12 +113,12 @@ async function run() {
                 wasmMemory[inputPtr + i] = jsonBytes[i];
             }
 
-            // Call the decompile_json function
-            if (instance.exports.decompile_json) {
-                const result = instance.exports.decompile_json(inputPtr, jsonBytes.length);
+            // Call the appropriate function
+            if (instance.exports[functionName]) {
+                const result = instance.exports[functionName](inputPtr, jsonBytes.length);
 
                 if (result < 0) {
-                    throw new Error('WASM decompile_json function returned error');
+                    throw new Error(`WASM ${functionName} function returned error`);
                 }
 
                 // Get response length and pointer
@@ -118,23 +141,43 @@ async function run() {
                 const response = JSON.parse(responseString);
 
                 if (response.success) {
-                    console.log(response.output);
+                    if (command === 'asm') {
+                        // Assembly successful - output class files
+                        if (response.class_files && response.class_files.length > 0) {
+                            console.log(`Assembly successful! Generated ${response.class_files.length} class file(s):`);
+                            response.class_files.forEach((classFile, index) => {
+                                const fileName = classFile.name || `Class${index}`;
+                                const outputFileName = `${fileName}.class`;
+
+                                // Write class file to disk
+                                const classData = Buffer.from(classFile.base64_content, 'base64');
+                                fs.writeFileSync(outputFileName, classData);
+
+                                console.log(`  ${outputFileName} (${classData.length} bytes)`);
+                            });
+                        } else {
+                            console.log('Assembly successful, but no class files were generated');
+                        }
+                    } else {
+                        // Disassembly successful - output source code
+                        console.log(response.output);
+                    }
                 } else {
-                    console.error(`Error: ${response.error || 'Unknown decompilation error'}`);
+                    console.error(`Error: ${response.error || `Unknown ${command === 'asm' ? 'assembly' : 'decompilation'} error`}`);
                     process.exit(1);
                 }
 
                 // Free the response
                 instance.exports.free_response();
             } else {
-                throw new Error('decompile_json function not found in WASM module');
+                throw new Error(`${functionName} function not found in WASM module`);
             }
         } else {
             throw new Error('allocate_input_buffer function not found in WASM module');
         }
 
     } catch (error) {
-        console.error('Error:', error.message);
+        console.error('XError:', error.message, error.stack);
         process.exit(1);
     }
 }

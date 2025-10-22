@@ -36,3 +36,15 @@ panic = "unwind"   # Use unwind instead of abort for better error handling
 [[bin]]
 name = "test_decompile"
 path = "src/bin/test_decompile.rs"
+
+[[bin]]
+name = "test_assemble"
+path = "src/bin/test_assemble.rs"
+
+[[bin]]
+name = "ass_main"
+path = "src/ass_main.rs"
+
+[[bin]]
+name = "dis_main"
+path = "src/dis_main.rs"
