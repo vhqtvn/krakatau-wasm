@@ -400,6 +400,7 @@ pub struct Attribute<'a> {
     pub name: u16,
     pub length: u32,
     pub actual_length: u32,
+    #[allow(dead_code)]
     pub name_utf: BStr<'a>,
     pub body: AttrBody<'a>,
 }
