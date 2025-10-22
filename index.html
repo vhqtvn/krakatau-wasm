@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Krakatau Java Decompiler</title>
+    <title>Krakatau Java Decompiler & Assembler</title>
     <style>
         * {
             margin: 0;
@@ -285,6 +285,98 @@
             transition: width 0.3s ease;
         }
 
+        .mode-tabs {
+            display: flex;
+            background: #f8f9fa;
+            border-bottom: 1px solid #dee2e6;
+            padding: 0 40px;
+        }
+
+        .mode-tab {
+            padding: 20px 30px;
+            background: none;
+            border: none;
+            font-size: 1.1em;
+            cursor: pointer;
+            border-bottom: 3px solid transparent;
+            transition: all 0.3s ease;
+            color: #6c757d;
+        }
+
+        .mode-tab.active {
+            color: #667eea;
+            border-bottom-color: #667eea;
+            font-weight: 600;
+        }
+
+        .mode-tab:hover:not(.active) {
+            color: #495057;
+            background: rgba(102, 126, 234, 0.1);
+        }
+
+        .mode-content {
+            display: none;
+        }
+
+        .mode-content.active {
+            display: block;
+        }
+
+        .assemble-textarea {
+            width: 100%;
+            min-height: 300px;
+            padding: 15px;
+            border: 1px solid #dee2e6;
+            border-radius: 8px;
+            font-family: 'Consolas', 'Monaco', 'Courier New', monospace;
+            font-size: 14px;
+            line-height: 1.6;
+            resize: vertical;
+            background: #f8f9fa;
+        }
+
+        .assemble-textarea:focus {
+            outline: none;
+            border-color: #667eea;
+            box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.1);
+        }
+
+        .hex-output {
+            background: #2d3748;
+            color: #e2e8f0;
+            border-radius: 8px;
+            padding: 20px;
+            font-family: 'Consolas', 'Monaco', 'Courier New', monospace;
+            font-size: 14px;
+            line-height: 1.6;
+            overflow-x: auto;
+            white-space: pre-wrap;
+            max-height: 400px;
+            overflow-y: auto;
+            margin-bottom: 15px;
+        }
+
+        .download-button {
+            padding: 10px 20px;
+            background: #17a2b8;
+            color: white;
+            border: none;
+            border-radius: 6px;
+            cursor: pointer;
+            font-size: 0.9em;
+            transition: background 0.3s ease;
+            margin-left: 10px;
+        }
+
+        .download-button:hover {
+            background: #138496;
+        }
+
+        .button-group {
+            display: flex;
+            gap: 10px;
+        }
+
         @media (max-width: 768px) {
             .header h1 {
                 font-size: 2em;
@@ -305,42 +397,96 @@
             .result-section {
                 padding: 20px;
             }
+
+            .mode-tabs {
+                padding: 0 20px;
+            }
+
+            .mode-tab {
+                padding: 15px 20px;
+                font-size: 1em;
+            }
         }
     </style>
 </head>
 <body>
     <div class="container">
         <div class="header">
-            <h1>🔮 Krakatau Java Decompiler</h1>
-            <p>Upload Java class files to decompile them into Java assembly code</p>
+            <h1>🔮 Krakatau Java Decompiler & Assembler</h1>
+            <p>Decompile Java class files to assembly or assemble assembly code to class files</p>
         </div>
 
-        <div class="upload-section">
-            <div class="upload-area" id="uploadArea">
-                <div class="upload-icon">📁</div>
-                <div class="upload-text">Click to upload or drag and drop</div>
-                <div class="upload-hint">Supports .class files</div>
-                <input type="file" id="fileInput" accept=".class">
+        <div class="mode-tabs">
+            <button class="mode-tab active" id="decompileTab" data-mode="decompile">📂 Decompile</button>
+            <button class="mode-tab" id="assembleTab" data-mode="assemble">🔧 Assemble</button>
+        </div>
+
+        <!-- Decompile Mode -->
+        <div class="mode-content active" id="decompileMode">
+            <div class="upload-section">
+                <div class="upload-area" id="uploadArea">
+                    <div class="upload-icon">📁</div>
+                    <div class="upload-text">Click to upload or drag and drop</div>
+                    <div class="upload-hint">Supports .class files</div>
+                    <input type="file" id="fileInput" accept=".class">
+                </div>
+                <div class="file-info" id="fileInfo">
+                    <strong>Selected file:</strong> <span id="fileName"></span>
+                    <strong>Size:</strong> <span id="fileSize"></span>
+                </div>
             </div>
-            <div class="file-info" id="fileInfo">
-                <strong>Selected file:</strong> <span id="fileName"></span>
-                <strong>Size:</strong> <span id="fileSize"></span>
+
+            <div class="options-section">
+                <div class="options-title">Decompilation Options</div>
+                <div class="options-grid">
+                    <div class="option-item">
+                        <input type="checkbox" id="roundtrip" name="roundtrip">
+                        <label for="roundtrip">Round-trip mode</label>
+                    </div>
+                    <div class="option-item">
+                        <input type="checkbox" id="noShortCodeAttr" name="noShortCodeAttr">
+                        <label for="noShortCodeAttr">No short code attributes</label>
+                    </div>
+                </div>
+                <button class="decompile-button" id="decompileBtn" disabled>Decompile Class File</button>
             </div>
         </div>
 
-        <div class="options-section">
-            <div class="options-title">Decompilation Options</div>
-            <div class="options-grid">
-                <div class="option-item">
-                    <input type="checkbox" id="roundtrip" name="roundtrip">
-                    <label for="roundtrip">Round-trip mode</label>
-                </div>
-                <div class="option-item">
-                    <input type="checkbox" id="noShortCodeAttr" name="noShortCodeAttr">
-                    <label for="noShortCodeAttr">No short code attributes</label>
-                </div>
+        <!-- Assemble Mode -->
+        <div class="mode-content" id="assembleMode">
+            <div class="options-section">
+                <div class="options-title">Assembly Code Input</div>
+                <textarea class="assemble-textarea" id="assembleInput" placeholder=".version 52 0
+.class public HelloWorld
+.super java/lang/Object
+
+.method public <init>()V
+    .stack 1
+    .locals 1
+    0000: 0x2A
+        aload_0
+    0001: 0xB7
+        invokespecial #1  // Method java/lang/Object.&quot;<init>&quot;:()V
+    0004: 0xB1
+        return
+.end method
+
+.method public static main([Ljava/lang/String;)V
+    .stack 2
+    .locals 1
+    0000: 0xB2
+        getstatic #2  // Field java/lang/System.out:Ljava/io/PrintStream;
+    0003: 0x12
+        ldc #3  // String Hello World
+    0005: 0xB6
+        invokevirtual #4  // Method java/io/PrintStream.println:(Ljava/lang/String;)V
+    0008: 0xB1
+        return
+.end method
+
+.end class"></textarea>
+                <button class="decompile-button" id="assembleBtn">Assemble to Bytecode</button>
             </div>
-            <button class="decompile-button" id="decompileBtn" disabled>Decompile Class File</button>
         </div>
 
         <div class="loading" id="loading">
@@ -353,33 +499,66 @@
 
         <div class="error-message" id="errorMessage"></div>
 
-        <div class="result-section" id="resultSection">
+        <!-- Decompile Result -->
+        <div class="result-section" id="decompileResultSection">
             <div class="result-header">
                 <div class="result-title">Decompiled Output</div>
                 <button class="copy-button" id="copyBtn">📋 Copy to Clipboard</button>
             </div>
             <div class="output-area" id="outputArea"></div>
         </div>
+
+        <!-- Assemble Result -->
+        <div class="result-section" id="assembleResultSection">
+            <div class="result-header">
+                <div class="result-title">Assembly Results</div>
+                <div class="button-group">
+                    <button class="copy-button" id="copyHexBtn">📋 Copy Hex</button>
+                    <button class="download-button" id="downloadBtn">💾 Download Class File</button>
+                </div>
+            </div>
+            <div class="hex-output" id="hexOutput"></div>
+        </div>
     </div>
 
     <!-- Krakatau WASM interface -->
     <script src="krakatau.js"></script>
     <script>
+        // Mode tabs
+        const decompileTab = document.getElementById('decompileTab');
+        const assembleTab = document.getElementById('assembleTab');
+        const decompileMode = document.getElementById('decompileMode');
+        const assembleMode = document.getElementById('assembleMode');
+
+        // Decompile elements
         const uploadArea = document.getElementById('uploadArea');
         const fileInput = document.getElementById('fileInput');
         const fileInfo = document.getElementById('fileInfo');
         const fileName = document.getElementById('fileName');
         const fileSize = document.getElementById('fileSize');
         const decompileBtn = document.getElementById('decompileBtn');
+
+        // Assemble elements
+        const assembleInput = document.getElementById('assembleInput');
+        const assembleBtn = document.getElementById('assembleBtn');
+
+        // Common elements
         const loading = document.getElementById('loading');
-        const resultSection = document.getElementById('resultSection');
-        const outputArea = document.getElementById('outputArea');
         const errorMessage = document.getElementById('errorMessage');
         const progressBar = document.getElementById('progressBar');
         const progressFill = document.getElementById('progressFill');
+
+        // Result elements
+        const decompileResultSection = document.getElementById('decompileResultSection');
+        const assembleResultSection = document.getElementById('assembleResultSection');
+        const outputArea = document.getElementById('outputArea');
+        const hexOutput = document.getElementById('hexOutput');
         const copyBtn = document.getElementById('copyBtn');
+        const copyHexBtn = document.getElementById('copyHexBtn');
+        const downloadBtn = document.getElementById('downloadBtn');
 
         let currentFile = null;
+        let currentMode = 'decompile';
         let krakatau = new KrakatauDecompiler();
 
         // Initialize Krakatau when page loads
@@ -389,9 +568,31 @@
                 console.log('Krakatau initialized successfully');
             } catch (error) {
                 console.warn('Failed to initialize Krakatau WASM:', error.message);
-                // Show a warning but still allow the simulation to work
             }
         });
+
+        // Mode switching
+        decompileTab.addEventListener('click', () => switchMode('decompile'));
+        assembleTab.addEventListener('click', () => switchMode('assemble'));
+
+        function switchMode(mode) {
+            currentMode = mode;
+
+            // Update tabs
+            document.querySelectorAll('.mode-tab').forEach(tab => tab.classList.remove('active'));
+            document.querySelectorAll('.mode-content').forEach(content => content.classList.remove('active'));
+            document.querySelectorAll('.result-section').forEach(result => result.classList.remove('active'));
+
+            if (mode === 'decompile') {
+                decompileTab.classList.add('active');
+                decompileMode.classList.add('active');
+            } else {
+                assembleTab.classList.add('active');
+                assembleMode.classList.add('active');
+            }
+
+            hideError();
+        }
 
         // Upload area events
         uploadArea.addEventListener('click', () => fileInput.click());
@@ -449,7 +650,7 @@
 
             hideError();
             hideResult();
-            showLoading();
+            showLoading('Decompiling class file...');
 
             try {
                 const arrayBuffer = await currentFile.arrayBuffer();
@@ -462,11 +663,37 @@
                 const output = await decompileClassFile(classData);
 
                 hideLoading();
-                showResult(output);
+                showDecompileResult(output);
 
             } catch (error) {
                 hideLoading();
                 showError('Error decompiling file: ' + error.message);
+            }
+        });
+
+        assembleBtn.addEventListener('click', async () => {
+            const sourceCode = assembleInput.value.trim();
+            if (!sourceCode) {
+                showError('Please enter assembly code');
+                return;
+            }
+
+            hideError();
+            hideResult();
+            showLoading('Assembling bytecode...');
+
+            try {
+                // Simulate progress
+                simulateProgress();
+
+                const result = await assembleCode(sourceCode);
+
+                hideLoading();
+                showAssembleResult(result);
+
+            } catch (error) {
+                hideLoading();
+                showError('Error assembling code: ' + error.message);
             }
         });
 
@@ -503,7 +730,22 @@
             }
         }
 
-        function showLoading() {
+        async function assembleCode(sourceCode) {
+            try {
+                const fileName = 'input.j';
+
+                // Use the Krakatau assembler
+                const result = await krakatau.assemble(sourceCode, fileName);
+
+                return result;
+
+            } catch (error) {
+                throw new Error('Assembly failed: ' + error.message);
+            }
+        }
+
+        function showLoading(message = 'Processing...') {
+            loading.querySelector('div:nth-child(2)').textContent = message;
             loading.classList.add('active');
             progressFill.style.width = '0%';
             progressBar.classList.remove('active');
@@ -514,9 +756,38 @@
             progressBar.classList.remove('active');
         }
 
-        function showResult(output) {
+        function showDecompileResult(output) {
             outputArea.textContent = output;
-            resultSection.classList.add('active');
+            decompileResultSection.classList.add('active');
+            progressFill.style.width = '100%';
+            setTimeout(() => {
+                progressBar.classList.remove('active');
+            }, 500);
+        }
+
+        function showAssembleResult(result) {
+            if (result.class_files && result.class_files.length > 0) {
+                let hexOutput = '';
+                result.class_files.forEach((classFile, index) => {
+                    const classData = atob(classFile.base64_content);
+                    const hexData = Array.from(classData)
+                        .map(b => b.charCodeAt(0).toString(16).padStart(2, '0').toUpperCase())
+                        .join(' ');
+
+                    hexOutput += `Class: ${classFile.name || 'Class' + index}\n`;
+                    hexOutput += `Size: ${classData.length} bytes\n`;
+                    hexOutput += `Hex:\n${hexData}\n\n`;
+                });
+
+                document.getElementById('hexOutput').textContent = hexOutput;
+                assembleResultSection.classList.add('active');
+
+                // Store the result for download
+                window.currentAssembleResult = result;
+            } else {
+                showError('Assembly completed but no class files were generated');
+            }
+
             progressFill.style.width = '100%';
             setTimeout(() => {
                 progressBar.classList.remove('active');
@@ -524,7 +795,8 @@
         }
 
         function hideResult() {
-            resultSection.classList.remove('active');
+            decompileResultSection.classList.remove('active');
+            assembleResultSection.classList.remove('active');
         }
 
         function showError(message) {
@@ -538,14 +810,43 @@
 
         copyBtn.addEventListener('click', () => {
             const text = outputArea.textContent;
+            copyToClipboard(text, copyBtn);
+        });
+
+        copyHexBtn.addEventListener('click', () => {
+            const text = document.getElementById('hexOutput').textContent;
+            copyToClipboard(text, copyHexBtn);
+        });
+
+        downloadBtn.addEventListener('click', () => {
+            if (window.currentAssembleResult && window.currentAssembleResult.class_files) {
+                window.currentAssembleResult.class_files.forEach((classFile, index) => {
+                    const fileName = classFile.name || `Class${index}`;
+                    const classData = atob(classFile.base64_content);
+
+                    // Create blob and download
+                    const blob = new Blob([classData], { type: 'application/octet-stream' });
+                    const url = URL.createObjectURL(blob);
+                    const a = document.createElement('a');
+                    a.href = url;
+                    a.download = `${fileName}.class`;
+                    document.body.appendChild(a);
+                    a.click();
+                    document.body.removeChild(a);
+                    URL.revokeObjectURL(url);
+                });
+            }
+        });
+
+        function copyToClipboard(text, button) {
             navigator.clipboard.writeText(text).then(() => {
-                const originalText = copyBtn.textContent;
-                copyBtn.textContent = '✅ Copied!';
-                copyBtn.style.background = '#28a745';
+                const originalText = button.textContent;
+                button.textContent = '✅ Copied!';
+                button.style.background = '#28a745';
 
                 setTimeout(() => {
-                    copyBtn.textContent = originalText;
-                    copyBtn.style.background = '';
+                    button.textContent = originalText;
+                    button.style.background = '';
                 }, 2000);
             }).catch(() => {
                 // Fallback for older browsers
@@ -556,12 +857,12 @@
                 document.execCommand('copy');
                 document.body.removeChild(textArea);
 
-                copyBtn.textContent = '✅ Copied!';
+                button.textContent = '✅ Copied!';
                 setTimeout(() => {
-                    copyBtn.textContent = '📋 Copy to Clipboard';
+                    button.textContent = originalText;
                 }, 2000);
             });
-        });
+        }
     </script>
 </body>
 </html>
