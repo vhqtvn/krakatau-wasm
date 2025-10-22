@@ -4,6 +4,7 @@ const http = require('http');
 const fs = require('fs');
 const path = require('path');
 const { URL } = require('url');
+const multer = require('multer');
 
 class KrakatauServer {
     constructor() {
@@ -23,6 +24,14 @@ class KrakatauServer {
         this.port = process.env.PORT || 3000;
         // For Heroku, bind to 0.0.0.0 to accept all connections
         this.host = process.env.HOST || '0.0.0.0';
+
+        // Configure multer for file uploads using memory storage
+        this.upload = multer({
+            storage: multer.memoryStorage(),
+            limits: {
+                fileSize: 10 * 1024 * 1024 // 10MB limit
+            }
+        });
 
         console.log(`Server configuration:`);
         console.log(`- Decompile Endpoint: ${this.decompileEndpoint}`);
@@ -303,43 +312,47 @@ class KrakatauServer {
         }
 
         try {
-            // Read the request body
-            const chunks = [];
-            for await (const chunk of req) {
-                chunks.push(chunk);
-            }
-            const requestBody = Buffer.concat(chunks);
+            // Use multer to handle file upload
+            const uploadMiddleware = isAssembleRequest
+                ? this.upload.single('file') // For assembly: expect .j files
+                : this.upload.single('file'); // For decompilation: expect .class files
 
-            if (requestBody.length === 0) {
+            // Wrap multer middleware in a promise
+            await new Promise((resolve, reject) => {
+                uploadMiddleware(req, res, (err) => {
+                    if (err) {
+                        reject(err);
+                    } else {
+                        resolve();
+                    }
+                });
+            });
+
+            if (!req.file) {
                 res.writeHead(400, { 'Content-Type': 'application/json' });
-                res.end(JSON.stringify({ error: 'No request data provided' }));
+                res.end(JSON.stringify({ error: 'No file uploaded' }));
                 return;
             }
 
             let result;
 
             if (isAssembleRequest) {
-                // Handle assembly request - expect JSON
-                let jsonRequest;
-                try {
-                    jsonRequest = JSON.parse(requestBody.toString('utf8'));
-                } catch (error) {
+                // Handle assembly request - expect .j file
+                const fileName = req.file.originalname || 'input.j';
+
+                // Validate file extension
+                if (!fileName.endsWith('.j')) {
                     res.writeHead(400, { 'Content-Type': 'application/json' });
-                    res.end(JSON.stringify({ error: 'Invalid JSON in request body' }));
+                    res.end(JSON.stringify({ error: 'Assembly endpoint expects .j files' }));
                     return;
                 }
 
-                if (!jsonRequest.source_code) {
-                    res.writeHead(400, { 'Content-Type': 'application/json' });
-                    res.end(JSON.stringify({ error: 'Missing source_code field in request' }));
-                    return;
-                }
-
-                const fileName = jsonRequest.file_path || 'input.j';
-                console.log(`Assembling ${fileName} (${jsonRequest.source_code.length} characters)`);
+                // Read the uploaded file content from memory
+                const sourceCode = req.file.buffer.toString('utf8');
+                console.log(`Assembling ${fileName} (${sourceCode.length} characters)`);
 
                 // Perform assembly
-                result = await this.assemble(jsonRequest.source_code, fileName);
+                result = await this.assemble(sourceCode, fileName);
 
                 // Return assembly result as JSON
                 res.writeHead(200, {
@@ -349,7 +362,18 @@ class KrakatauServer {
                 res.end(JSON.stringify(result));
 
             } else {
-                const classData = atob(requestBody);
+                // Handle decompilation request - expect .class file
+                const fileName = req.file.originalname || 'Unknown.class';
+
+                // Validate file extension
+                if (!fileName.endsWith('.class')) {
+                    res.writeHead(400, { 'Content-Type': 'application/json' });
+                    res.end(JSON.stringify({ error: 'Decompilation endpoint expects .class files' }));
+                    return;
+                }
+
+                // Read the uploaded file content from memory
+                const classData = req.file.buffer;
 
                 // Validate that it's a class file
                 if (classData.length < 4 || classData.readUInt32BE(0) !== 0xCAFEBABE) {
@@ -357,9 +381,6 @@ class KrakatauServer {
                     res.end(JSON.stringify({ error: 'Invalid class file format' }));
                     return;
                 }
-
-                // Get filename from query parameter or use default
-                const fileName = parsedUrl.searchParams.get('filename') || 'Unknown.class';
 
                 // Parse decompilation options from query parameters
                 const options = {
