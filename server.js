@@ -13,7 +13,8 @@ class KrakatauServer {
         this.initialized = false;
 
         // Configuration from environment variables
-        this.endpoint = process.env.END_POINT || '/decompile';
+        this.decompileEndpoint = process.env.DECOMPILE_ENDPOINT || '/decompile';
+        this.assembleEndpoint = process.env.ASSEMBLE_ENDPOINT || '/assemble';
         this.authUser = process.env.AUTH_USER;
         this.authPassword = process.env.AUTH_PASSWORD;
         this.authTokenHeader = process.env.AUTH_TOKEN_HEADER;
@@ -24,7 +25,8 @@ class KrakatauServer {
         this.host = process.env.HOST || '0.0.0.0';
 
         console.log(`Server configuration:`);
-        console.log(`- Endpoint: ${this.endpoint}`);
+        console.log(`- Decompile Endpoint: ${this.decompileEndpoint}`);
+        console.log(`- Assemble Endpoint: ${this.assembleEndpoint}`);
         console.log(`- Port: ${this.port}`);
         console.log(`- Host: ${this.host}`);
         console.log(`- Basic Auth: ${this.authUser ? 'Enabled' : 'Disabled'}`);
@@ -68,6 +70,7 @@ class KrakatauServer {
             const requiredFunctions = [
                 'allocate_input_buffer',
                 'decompile_json',
+                'assemble_json',
                 'get_response_length',
                 'get_response_ptr',
                 'free_response'
@@ -167,6 +170,76 @@ class KrakatauServer {
         }
     }
 
+    async assemble(sourceCode, fileName, options = {}) {
+        if (!this.initialized) {
+            await this.initialize();
+        }
+
+        try {
+            // Create JSON request matching run.js format
+            const request = {
+                file_path: fileName,
+                source_code: sourceCode
+            };
+
+            const jsonString = JSON.stringify(request);
+            const jsonBytes = new TextEncoder().encode(jsonString);
+
+            // Initialize the heap with a small allocation (workaround for heap initialization issue)
+            this.wasmInstance.exports.allocate_input_buffer(10);
+
+            // Allocate input buffer
+            const inputPtr = this.wasmInstance.exports.allocate_input_buffer(jsonBytes.length);
+            if (inputPtr === 0) {
+                throw new Error('Failed to allocate WASM memory for input');
+            }
+
+            // Copy JSON data to WASM memory
+            const wasmMemory = new Uint8Array(this.memory.buffer);
+            for (let i = 0; i < jsonBytes.length; i++) {
+                wasmMemory[inputPtr + i] = jsonBytes[i];
+            }
+
+            // Call the assemble_json function
+            const result = this.wasmInstance.exports.assemble_json(inputPtr, jsonBytes.length);
+
+            if (result < 0) {
+                throw new Error('WASM assemble_json function returned error');
+            }
+
+            // Get response length and pointer
+            const responseLength = this.wasmInstance.exports.get_response_length();
+            if (responseLength < 0) {
+                throw new Error('Failed to get response length from WASM');
+            }
+
+            const responsePtr = this.wasmInstance.exports.get_response_ptr();
+            if (responsePtr === 0) {
+                throw new Error('Failed to get response pointer from WASM');
+            }
+
+            // Read response from WASM memory
+            const responseMemory = new Uint8Array(this.memory.buffer);
+            const responseBytes = responseMemory.slice(responsePtr, responsePtr + responseLength);
+
+            // Parse and return response
+            const responseString = new TextDecoder().decode(responseBytes);
+            const response = JSON.parse(responseString);
+
+            // Free the response
+            this.wasmInstance.exports.free_response();
+
+            if (!response.success) {
+                throw new Error(response.error || 'Unknown assembly error');
+            }
+
+            return response;
+
+        } catch (error) {
+            throw new Error(`Assembly failed: ${error.message}`);
+        }
+    }
+
     authenticate(req) {
         // Check basic authentication if configured
         if (this.authUser && this.authPassword) {
@@ -209,12 +282,15 @@ class KrakatauServer {
             return;
         }
 
-        // Only handle the configured endpoint with POST
-        if (req.method !== 'POST' || parsedUrl.pathname !== this.endpoint) {
+        // Only handle POST requests on valid endpoints
+        if (req.method !== 'POST' ||
+            (parsedUrl.pathname !== this.decompileEndpoint && parsedUrl.pathname !== this.assembleEndpoint)) {
             res.writeHead(404, { 'Content-Type': 'application/json' });
             res.end(JSON.stringify({ error: 'Not found' }));
             return;
         }
+
+        const isAssembleRequest = parsedUrl.pathname === this.assembleEndpoint;
 
         // Check authentication
         if (!this.authenticate(req)) {
@@ -232,40 +308,76 @@ class KrakatauServer {
             for await (const chunk of req) {
                 chunks.push(chunk);
             }
-            const classData = Buffer.concat(chunks);
+            const requestBody = Buffer.concat(chunks);
 
-            if (classData.length === 0) {
+            if (requestBody.length === 0) {
                 res.writeHead(400, { 'Content-Type': 'application/json' });
-                res.end(JSON.stringify({ error: 'No class file data provided' }));
+                res.end(JSON.stringify({ error: 'No request data provided' }));
                 return;
             }
 
-            // Validate that it's a class file
-            if (classData.length < 4 || classData.readUInt32BE(0) !== 0xCAFEBABE) {
-                res.writeHead(400, { 'Content-Type': 'application/json' });
-                res.end(JSON.stringify({ error: 'Invalid class file format' }));
-                return;
+            let result;
+
+            if (isAssembleRequest) {
+                // Handle assembly request - expect JSON
+                let jsonRequest;
+                try {
+                    jsonRequest = JSON.parse(requestBody.toString('utf8'));
+                } catch (error) {
+                    res.writeHead(400, { 'Content-Type': 'application/json' });
+                    res.end(JSON.stringify({ error: 'Invalid JSON in request body' }));
+                    return;
+                }
+
+                if (!jsonRequest.source_code) {
+                    res.writeHead(400, { 'Content-Type': 'application/json' });
+                    res.end(JSON.stringify({ error: 'Missing source_code field in request' }));
+                    return;
+                }
+
+                const fileName = jsonRequest.file_path || 'input.j';
+                console.log(`Assembling ${fileName} (${jsonRequest.source_code.length} characters)`);
+
+                // Perform assembly
+                result = await this.assemble(jsonRequest.source_code, fileName);
+
+                // Return assembly result as JSON
+                res.writeHead(200, {
+                    'Content-Type': 'application/json',
+                    'Access-Control-Allow-Origin': '*'
+                });
+                res.end(JSON.stringify(result));
+
+            } else {
+                const classData = atob(requestBody);
+
+                // Validate that it's a class file
+                if (classData.length < 4 || classData.readUInt32BE(0) !== 0xCAFEBABE) {
+                    res.writeHead(400, { 'Content-Type': 'application/json' });
+                    res.end(JSON.stringify({ error: 'Invalid class file format' }));
+                    return;
+                }
+
+                // Get filename from query parameter or use default
+                const fileName = parsedUrl.searchParams.get('filename') || 'Unknown.class';
+
+                // Parse decompilation options from query parameters
+                const options = {
+                    roundtrip: parsedUrl.searchParams.get('roundtrip') === 'true',
+                    noShortCodeAttr: parsedUrl.searchParams.get('no_shortcodeattr') === 'true'
+                };
+
+                console.log(`Decompiling ${fileName} (${classData.length} bytes)`);
+
+                // Perform decompilation
+                const output = await this.decompile(classData, fileName, options);
+
+                res.writeHead(200, {
+                    'Content-Type': 'text/plain; charset=utf-8',
+                    'Access-Control-Allow-Origin': '*'
+                });
+                res.end(output);
             }
-
-            // Get filename from query parameter or use default
-            const fileName = parsedUrl.searchParams.get('filename') || 'Unknown.class';
-
-            // Parse decompilation options from query parameters
-            const options = {
-                roundtrip: parsedUrl.searchParams.get('roundtrip') === 'true',
-                noShortCodeAttr: parsedUrl.searchParams.get('no_shortcodeattr') === 'true'
-            };
-
-            console.log(`Decompiling ${fileName} (${classData.length} bytes)`);
-
-            // Perform decompilation
-            const output = await this.decompile(classData, fileName, options);
-
-            res.writeHead(200, {
-                'Content-Type': 'text/plain; charset=utf-8',
-                'Access-Control-Allow-Origin': '*'
-            });
-            res.end(output);
 
         } catch (error) {
             console.error('Error processing request:', error.message);
@@ -281,8 +393,9 @@ class KrakatauServer {
         const server = http.createServer((req, res) => this.handleRequest(req, res));
 
         server.listen(this.port, this.host, () => {
-            console.log(`Krakatau decompilation server running on http://${this.host}:${this.port}`);
-            console.log(`Decompilation endpoint: POST ${this.endpoint}`);
+            console.log(`Krakatau server running on http://${this.host}:${this.port}`);
+            console.log(`Decompilation endpoint: POST ${this.decompileEndpoint}`);
+            console.log(`Assembly endpoint: POST ${this.assembleEndpoint}`);
             console.log('Server ready to accept requests...');
         });
 
