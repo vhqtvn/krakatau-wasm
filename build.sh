@@ -16,7 +16,7 @@ rustup target add wasm32-unknown-unknown
 
 # Build the WASM file
 echo "Building krak2.wasm..."
-cargo build --release --target wasm32-unknown-unknown
+cargo build --release --target wasm32-unknown-unknown --lib
 
 # Copy the built file to the root directory
 if [ -f "target/wasm32-unknown-unknown/release/krakatau2.wasm" ]; then
